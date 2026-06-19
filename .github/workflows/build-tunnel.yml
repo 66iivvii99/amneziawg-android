@@ -1,0 +1,72 @@
+name: Build AmneziaWG Tunnel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-tunnel:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;26.1.10909125" \
+            "cmake;3.22.1"
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            make \
+            cmake \
+            ninja-build \
+            pkg-config \
+            file \
+            curl \
+            unzip \
+            zip
+
+      - name: Prepare Gradle wrapper
+        run: |
+          chmod +x ./gradlew
+          printf "sdk.dir=%s\n" "$ANDROID_HOME" > local.properties
+          cat local.properties
+
+      - name: Build tunnel release AAR
+        run: |
+          ./gradlew :tunnel:assembleRelease --stacktrace --no-daemon
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+          find tunnel/build -type f -name "*.aar" -print -exec cp -v {} artifacts/ \;
+          find tunnel/build -type f -name "*.so" -print -exec cp -v {} artifacts/ \;
+          echo "Collected:"
+          find artifacts -type f -maxdepth 1 -print -exec ls -lh {} \;
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: amneziawg-tunnel-artifacts
+          path: artifacts/*
